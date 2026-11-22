@@ -1,0 +1,120 @@
+.wrap {
+  --env-w: min(80vw, 300px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  /* espaço para a aba aberta não tapar o texto */
+  margin-block: calc(var(--env-w) * 0.42) 1.5rem;
+}
+
+.envelope {
+  position: relative;
+  width: var(--env-w);
+  aspect-ratio: 3 / 2;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  perspective: 800px;
+  border-radius: 12px;
+}
+.envelope:disabled {
+  cursor: default;
+}
+
+.back,
+.front,
+.flap,
+.letter {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+}
+
+.back {
+  background: var(--envelope-dark);
+  z-index: 0;
+}
+
+.letter {
+  inset: 8% 8% 8% 8%;
+  background: #fffdf9;
+  z-index: 1;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.15);
+  transition: transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1) 300ms;
+}
+
+.front {
+  background: var(--envelope);
+  clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 100%, 0 100%);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.05);
+  z-index: 2;
+}
+
+.flap {
+  background: linear-gradient(to bottom, var(--envelope-light), var(--envelope));
+  clip-path: polygon(0 0, 100% 0, 50% 58%);
+  transform-origin: top center;
+  transition: transform 450ms ease-in-out;
+  z-index: 3;
+}
+
+.seal {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  translate: -50% -50%;
+  font-size: 2.25rem;
+  z-index: 4;
+  transition: opacity 200ms ease;
+}
+
+.open .flap {
+  transform: rotateX(180deg);
+  z-index: 0;
+}
+.open .seal {
+  opacity: 0;
+}
+.open .letter {
+  transform: translateY(-45%);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.reveal {
+  width: 100%;
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 500ms ease 700ms,
+    transform 500ms ease 700ms;
+}
+.revealOpen {
+  opacity: 1;
+  transform: none;
+}
+
+@media (hover: hover) {
+  .envelope:not(:disabled):hover .flap {
+    transform: rotateX(25deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flap,
+  .letter,
+  .seal,
+  .reveal {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+  .envelope:not(:disabled):hover .flap {
+    transform: none;
+  }
+}
