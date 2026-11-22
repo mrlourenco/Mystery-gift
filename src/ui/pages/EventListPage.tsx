@@ -4,10 +4,12 @@ import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useEventList } from '../hooks/useEvents';
+import { useStatus } from '../components/StatusMessage';
 
 export function EventListPage() {
   const { state, remove } = useEventList();
   const [dialog, confirm] = useConfirm();
+  const [status, showStatus] = useStatus();
 
   return (
     <Layout title="Os teus eventos">
@@ -23,7 +25,7 @@ export function EventListPage() {
       {state.status === 'loading' && <p aria-busy="true">A carregar…</p>}
       {state.status === 'error' && (
         <p className="alert alert-error" role="alert">
-          Não foi possível ler os eventos guardados.
+          Não foi possível ler os eventos. Verifica a ligação à internet e recarrega a página.
         </p>
       )}
       {state.status === 'ready' && state.data.length === 0 && (
@@ -63,7 +65,10 @@ export function EventListPage() {
                     confirmLabel: 'Apagar',
                     danger: true,
                   });
-                  if (ok) await remove(e.id);
+                  if (ok)
+                    await remove(e.id).catch(() =>
+                      showStatus('Não foi possível apagar. Verifica a ligação.'),
+                    );
                 }}
               >
                 Apagar
@@ -73,6 +78,7 @@ export function EventListPage() {
         </ul>
       )}
       {dialog}
+      {status}
     </Layout>
   );
 }

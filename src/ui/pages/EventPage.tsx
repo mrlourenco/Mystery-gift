@@ -22,6 +22,8 @@ import { EventDetailsForm } from './EventDetailsForm';
 import { ParticipantsEditor } from './ParticipantsEditor';
 import { NotFoundPage } from './NotFoundPage';
 
+const SAVE_ERROR = 'Não foi possível guardar. Verifica a ligação à internet.';
+
 const STALE_WARNING = (
   <p>
     Já existe um sorteio. Se continuares, o sorteio é apagado e{' '}
@@ -57,8 +59,7 @@ export function EventPage() {
       await update(fn);
       return true;
     } catch (e) {
-      if (e instanceof DomainError) showStatus(e.message);
-      else throw e;
+      showStatus(e instanceof DomainError ? e.message : SAVE_ERROR);
       return false;
     }
   };
@@ -69,8 +70,7 @@ export function EventPage() {
       await update((e) => runDraw(e));
       navigate(`/eventos/${event.id}/resultado`);
     } catch (e) {
-      if (e instanceof DrawImpossibleError) setDrawError(e.message);
-      else throw e;
+      setDrawError(e instanceof DrawImpossibleError ? e.message : SAVE_ERROR);
     }
   };
 

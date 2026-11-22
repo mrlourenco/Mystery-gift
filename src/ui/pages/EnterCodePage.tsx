@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { decodeReveal, extractCode } from '../../links';
+import { revealPath, useLinkService } from '../../links';
 import { Button } from '../components/Button';
 import { Layout } from '../components/Layout';
 
@@ -9,16 +9,13 @@ export function EnterCodePage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const id = useId();
+  const links = useLinkService();
 
   const submit = (ev: FormEvent) => {
     ev.preventDefault();
-    const code = extractCode(value);
-    try {
-      decodeReveal(code);
-      navigate(`/r/${code}`);
-    } catch {
-      setError('Código inválido. Confirma que o copiaste por inteiro.');
-    }
+    const code = links.parseInput(value);
+    if (code) navigate(revealPath(code));
+    else setError('Código inválido. Confirma que o copiaste por inteiro.');
   };
 
   return (

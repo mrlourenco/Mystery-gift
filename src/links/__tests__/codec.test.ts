@@ -83,3 +83,41 @@ describe('shareLink', () => {
     expect(open).not.toHaveBeenCalled();
   });
 });
+
+describe('LocalLinkService', () => {
+  it('gera um código por participante e resolve-o', async () => {
+    const { LocalLinkService } = await import('..');
+    const { createEvent, addParticipant, runDraw } = await import('../../domain');
+    let e = createEvent({ name: 'Natal', budgetCents: 1000, exchangeDate: '2026-12-24' });
+    for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, n);
+    e = runDraw(e);
+    const svc = new LocalLinkService();
+    const codes = await svc.codesFor(e);
+    expect(codes.size).toBe(3);
+    const code = codes.get(e.participants[0]!.id)!;
+    const r = await svc.resolve(code);
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') {
+      expect(r.data.giverName).toBe('Ana');
+      expect(r.isCurrent).toBeNull();
+    }
+    expect(svc.parseInput(`https://x/#/r/${code}`)).toBe(code);
+    expect(svc.parseInput('abc')).toBeNull();
+    expect((await svc.resolve('abc')).status).toBe('invalid');
+  });
+
+  it('deteta links de um sorteio antigo no dispositivo do organizador', async () => {
+    const { LocalLinkService } = await import('..');
+    const { InMemoryEventRepository } = await import('../../data');
+    const { createEvent, addParticipant, runDraw } = await import('../../domain');
+    let e = createEvent({ name: 'Natal', budgetCents: 1000, exchangeDate: '2026-12-24' });
+    for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, n);
+    const first = runDraw(e);
+    const repo = new InMemoryEventRepository([first]);
+    const svc = new LocalLinkService(repo);
+    const oldCode = (await svc.codesFor(first)).get(e.participants[0]!.id)!;
+    expect(await svc.resolve(oldCode)).toMatchObject({ isCurrent: true });
+    await repo.save(runDraw(first));
+    expect(await svc.resolve(oldCode)).toMatchObject({ isCurrent: false });
+  });
+});

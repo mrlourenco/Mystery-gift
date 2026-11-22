@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import type { AuthService } from '../auth';
 import { AuthProvider } from '../auth';
 import { RepositoryProvider, type EventRepository } from '../data';
+import { LinkServiceProvider, type LinkService } from '../links';
 import { EnterCodePage } from './pages/EnterCodePage';
 import { EventListPage } from './pages/EventListPage';
 import { EventPage } from './pages/EventPage';
@@ -24,14 +26,34 @@ export function AppRoutes() {
   );
 }
 
-export function App({ repository, auth }: { repository: EventRepository; auth: AuthService }) {
+export interface Services {
+  repository: EventRepository;
+  auth: AuthService;
+  links: LinkService;
+}
+
+export function ServicesProvider({
+  services,
+  children,
+}: {
+  services: Services;
+  children: ReactNode;
+}) {
   return (
-    <AuthProvider service={auth}>
-      <RepositoryProvider repository={repository}>
-        <HashRouter>
-          <AppRoutes />
-        </HashRouter>
+    <AuthProvider service={services.auth}>
+      <RepositoryProvider repository={services.repository}>
+        <LinkServiceProvider service={services.links}>{children}</LinkServiceProvider>
       </RepositoryProvider>
     </AuthProvider>
+  );
+}
+
+export function App({ services }: { services: Services }) {
+  return (
+    <ServicesProvider services={services}>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
+    </ServicesProvider>
   );
 }

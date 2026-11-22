@@ -1,4 +1,4 @@
-/** Configuração lida de import.meta.env. Os valores do Supabase ainda não são usados. */
+/** Configuração lida de import.meta.env. Sem as variáveis do Supabase, a app funciona só em local. */
 export interface AppConfig {
   supabaseUrl: string | null;
   supabaseAnonKey: string | null;

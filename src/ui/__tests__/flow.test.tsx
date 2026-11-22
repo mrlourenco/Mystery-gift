@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { AuthProvider, NoAuthService } from '../../auth';
-import { InMemoryEventRepository, RepositoryProvider, type EventRepository } from '../../data';
-import { encodeReveal } from '../../links';
-import { AppRoutes } from '../App';
+import { NoAuthService } from '../../auth';
+import { InMemoryEventRepository, type EventRepository } from '../../data';
+import { encodeReveal, LocalLinkService } from '../../links';
+import { AppRoutes, ServicesProvider } from '../App';
 
 beforeAll(() => {
   // jsdom não implementa <dialog>.showModal
@@ -16,13 +16,13 @@ beforeAll(() => {
 
 function renderApp(path = '/', repo: EventRepository = new InMemoryEventRepository()) {
   render(
-    <AuthProvider service={new NoAuthService()}>
-      <RepositoryProvider repository={repo}>
-        <MemoryRouter initialEntries={[path]}>
-          <AppRoutes />
-        </MemoryRouter>
-      </RepositoryProvider>
-    </AuthProvider>,
+    <ServicesProvider
+      services={{ repository: repo, auth: new NoAuthService(), links: new LocalLinkService(repo) }}
+    >
+      <MemoryRouter initialEntries={[path]}>
+        <AppRoutes />
+      </MemoryRouter>
+    </ServicesProvider>,
   );
   return repo;
 }
@@ -65,11 +65,11 @@ describe('fluxo do organizador', () => {
 
     await user.click(screen.getByRole('button', { name: 'Fazer sorteio' }));
     expect(await screen.findByRole('heading', { name: 'Links pessoais' })).toBeInTheDocument();
-    const cards = within(screen.getByRole('list', { name: 'Links por participante' })).getAllByRole(
-      'listitem',
-    );
+    const cards = within(
+      await screen.findByRole('list', { name: 'Links por participante' }),
+    ).getAllByRole('listitem');
     expect(cards).toHaveLength(3);
-    expect(screen.getByRole('button', { name: 'Copiar link de Ana' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Copiar link de Ana' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Partilhar link com Eva' })).toBeInTheDocument();
 
     const [saved] = await repo.list();
@@ -162,6 +162,7 @@ describe('revelação', () => {
     renderApp(`/r/${code}`);
     expect(await screen.findByRole('heading', { name: 'Olá, Inês!' })).toBeInTheDocument();
     expect(screen.queryByText('João 🎅')).not.toBeInTheDocument();
+    expect(screen.queryByText(/sorteio mais recente/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Abrir envelope/ }));
     expect(screen.getByText('João 🎅')).toBeInTheDocument();
     expect(screen.getByText(/20\s?€/)).toBeInTheDocument();

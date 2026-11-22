@@ -50,16 +50,3 @@ export function decodeReveal(code: string): RevealData {
     throw new InvalidCodeError();
   }
 }
-
-/** Aceita o código sozinho ou um link completo (…#/r/<código>). */
-export function extractCode(input: string): string {
-  const s = input.trim();
-  const m = s.match(/#\/r\/([A-Za-z0-9_-]+)/);
-  if (m) return m[1]!;
-  return s.replace(/\s+/g, '');
-}
-
-export function buildRevealUrl(code: string, baseUrl: string): string {
-  const base = baseUrl.split('#')[0]!;
-  return `${base}#/r/${code}`;
-}

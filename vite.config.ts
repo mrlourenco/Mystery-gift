@@ -5,6 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // Nome do repositório no GitHub Pages (https://<user>.github.io/<repo>/).
 const BASE = process.env.VITE_BASE ?? '/Mystery-gift/';
+// Sem Supabase configurado, o chunk do supabase-js nunca é usado: não o pré-carregar.
+const USES_SUPABASE = Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY);
 
 export default defineConfig({
   base: BASE,
@@ -37,6 +39,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globIgnores: USES_SUPABASE ? [] : ['**/supabase-*.js'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
       },

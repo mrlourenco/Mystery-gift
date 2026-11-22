@@ -1,18 +1,29 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { NoAuthService } from './auth';
+import { config, isSupabaseConfigured } from './config/env';
 import { InMemoryEventRepository, LocalEventRepository, type EventRepository } from './data';
-import { App } from './ui/App';
+import { LocalLinkService } from './links';
+import { App, type Services } from './ui/App';
 import './ui/styles/tokens.css';
 import './ui/styles/global.css';
 
-// Ponto único de composição: na Fase 2 troca-se aqui por SupabaseEventRepository / SupabaseAuthService.
-const repository: EventRepository =
-  typeof indexedDB !== 'undefined' ? new LocalEventRepository() : new InMemoryEventRepository();
-const auth = new NoAuthService();
+/** Ponto único de composição: Supabase se estiver configurado, senão tudo local. */
+async function createServices(): Promise<Services> {
+  if (isSupabaseConfigured(config)) {
+    // Import dinâmico: o supabase-js só é descarregado quando é usado.
+    const { createSupabaseServices } = await import('./supabase');
+    return createSupabaseServices(config.supabaseUrl!, config.supabaseAnonKey!);
+  }
+  const repository: EventRepository =
+    typeof indexedDB !== 'undefined' ? new LocalEventRepository() : new InMemoryEventRepository();
+  return { repository, auth: new NoAuthService(), links: new LocalLinkService(repository) };
+}
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App repository={repository} auth={auth} />
-  </StrictMode>,
+void createServices().then((services) =>
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App services={services} />
+    </StrictMode>,
+  ),
 );

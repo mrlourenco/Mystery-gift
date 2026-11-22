@@ -7,6 +7,9 @@ export class NoAuthService implements AuthService {
   async getCurrentUser(): Promise<User> {
     return ANON;
   }
+  async ensureSignedIn(): Promise<User> {
+    return ANON;
+  }
   subscribe(listener: (user: User) => void): () => void {
     listener(ANON);
     return () => {};
