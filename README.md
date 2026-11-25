@@ -159,7 +159,9 @@ só envia para o e-mail da tua própria conta.
    supabase functions deploy send-draw-emails
    ```
 
-5. Opcional (RGPD): ativa a extensão `pg_cron` e agenda `purge_participant_emails()`
+5. Em `.env.production`, muda `VITE_EMAIL_ENABLED=true` e faz push para `main`. Até lá, a
+   app mostra o botão **Enviar por e-mail** (`mailto:`) em vez do envio automático.
+6. Opcional (RGPD): ativa a extensão `pg_cron` e agenda `purge_participant_emails()`
    (o comando está no fim de `supabase/migrations/20261125000000_emails.sql`). Isto apaga
    os e-mails dos participantes 7 dias depois da data da troca.
 

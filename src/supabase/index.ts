@@ -7,7 +7,11 @@ import { SupabaseLinkService } from './SupabaseLinkService';
 import { SupabaseDrawMailer } from './SupabaseDrawMailer';
 
 /** Composição dos serviços quando o Supabase está configurado. */
-export function createSupabaseServices(url: string, anonKey: string): Services {
+export function createSupabaseServices(
+  url: string,
+  anonKey: string,
+  opts: { emailEnabled: boolean },
+): Services {
   const supabase = createSupabase(url, anonKey);
   const auth = new SupabaseAuthService(supabase);
   const ensure = () => auth.ensureSignedIn();
@@ -21,6 +25,7 @@ export function createSupabaseServices(url: string, anonKey: string): Services {
     auth,
     repository,
     links: new SupabaseLinkService(supabase, ensure),
-    mailer: new SupabaseDrawMailer(supabase, ensure),
+    // Sem a função de envio publicada, a UI usa a alternativa mailto:.
+    mailer: opts.emailEnabled ? new SupabaseDrawMailer(supabase, ensure) : null,
   };
 }

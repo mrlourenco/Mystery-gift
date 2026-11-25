@@ -46,8 +46,16 @@ export class SupabaseDrawMailer implements DrawMailer {
     if (error) {
       let message = 'Não foi possível enviar os e-mails. Verifica a ligação à internet.';
       if (error instanceof FunctionsHttpError) {
-        const body = (await error.context.json().catch(() => null)) as { error?: string } | null;
-        if (body?.error) message = body.error;
+        const res = error.context as Response;
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+          message?: string;
+        } | null;
+        if (res.status === 404 && !body?.error)
+          message =
+            'O envio automático de e-mails ainda não está ativo no servidor. Usa «Partilhar» ou «Copiar link».';
+        else if (body?.error) message = body.error;
+        else if (body?.message) message = body.message;
       }
       throw new MailerError(message);
     }

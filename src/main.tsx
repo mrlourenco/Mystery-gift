@@ -13,7 +13,9 @@ async function createServices(): Promise<Services> {
   if (isSupabaseConfigured(config)) {
     // Import dinâmico: o supabase-js só é descarregado quando é usado.
     const { createSupabaseServices } = await import('./supabase');
-    return createSupabaseServices(config.supabaseUrl!, config.supabaseAnonKey!);
+    return createSupabaseServices(config.supabaseUrl!, config.supabaseAnonKey!, {
+      emailEnabled: config.emailEnabled,
+    });
   }
   const repository: EventRepository =
     typeof indexedDB !== 'undefined' ? new LocalEventRepository() : new InMemoryEventRepository();
