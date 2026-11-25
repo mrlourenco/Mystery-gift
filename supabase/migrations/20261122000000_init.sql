@@ -1,8 +1,18 @@
 -- Amigo Secreto — esquema inicial
 -- Aplicar no SQL Editor do Supabase (ou com `supabase db push`).
+-- Tudo fica no schema `amigo_secreto`, para poder partilhar o projeto com outra app.
+-- Depois de aplicar: Settings → Data API → Exposed schemas → acrescentar `amigo_secreto`.
+
+create schema if not exists amigo_secreto;
+
+grant usage on schema amigo_secreto to anon, authenticated, service_role;
+alter default privileges in schema amigo_secreto
+  grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema amigo_secreto
+  grant all on tables to service_role;
 
 -- ───────────────────────── Eventos ─────────────────────────
-create table if not exists public.events (
+create table if not exists amigo_secreto.events (
   id            uuid primary key,
   owner_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name          text not null check (char_length(name) between 1 and 80),
@@ -15,51 +25,51 @@ create table if not exists public.events (
   updated_at    timestamptz not null default now()
 );
 
-create index if not exists events_owner_updated_idx on public.events (owner_id, updated_at desc);
+create index if not exists events_owner_updated_idx on amigo_secreto.events (owner_id, updated_at desc);
 
-alter table public.events enable row level security;
+alter table amigo_secreto.events enable row level security;
 
-create policy "events: o dono lê" on public.events
+create policy "events: o dono lê" on amigo_secreto.events
   for select to authenticated using (owner_id = (select auth.uid()));
-create policy "events: o dono cria" on public.events
+create policy "events: o dono cria" on amigo_secreto.events
   for insert to authenticated with check (owner_id = (select auth.uid()));
-create policy "events: o dono altera" on public.events
+create policy "events: o dono altera" on amigo_secreto.events
   for update to authenticated
   using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
-create policy "events: o dono apaga" on public.events
+create policy "events: o dono apaga" on amigo_secreto.events
   for delete to authenticated using (owner_id = (select auth.uid()));
 
 -- ───────────────────── Tokens dos links ─────────────────────
 -- Um token por (evento, sorteio, participante). Os tokens de sorteios antigos ficam
 -- guardados para a página de revelação poder dizer "este link já não é válido".
-create table if not exists public.reveal_tokens (
+create table if not exists amigo_secreto.reveal_tokens (
   token      text primary key check (token ~ '^[0-9A-HJKMNP-TV-Z]{12}$'),
-  event_id   uuid not null references public.events (id) on delete cascade,
+  event_id   uuid not null references amigo_secreto.events (id) on delete cascade,
   draw_id    text not null,
   giver_id   text not null,
   created_at timestamptz not null default now(),
   unique (event_id, draw_id, giver_id)
 );
 
-alter table public.reveal_tokens enable row level security;
+alter table amigo_secreto.reveal_tokens enable row level security;
 
-create policy "tokens: o dono do evento lê" on public.reveal_tokens
+create policy "tokens: o dono do evento lê" on amigo_secreto.reveal_tokens
   for select to authenticated using (
-    exists (select 1 from public.events e where e.id = event_id and e.owner_id = (select auth.uid()))
+    exists (select 1 from amigo_secreto.events e where e.id = event_id and e.owner_id = (select auth.uid()))
   );
-create policy "tokens: o dono do evento cria" on public.reveal_tokens
+create policy "tokens: o dono do evento cria" on amigo_secreto.reveal_tokens
   for insert to authenticated with check (
-    exists (select 1 from public.events e where e.id = event_id and e.owner_id = (select auth.uid()))
+    exists (select 1 from amigo_secreto.events e where e.id = event_id and e.owner_id = (select auth.uid()))
   );
-create policy "tokens: o dono do evento apaga" on public.reveal_tokens
+create policy "tokens: o dono do evento apaga" on amigo_secreto.reveal_tokens
   for delete to authenticated using (
-    exists (select 1 from public.events e where e.id = event_id and e.owner_id = (select auth.uid()))
+    exists (select 1 from amigo_secreto.events e where e.id = event_id and e.owner_id = (select auth.uid()))
   );
 
 -- ───────────────────── Revelação pública ─────────────────────
 -- Quem recebe o link não tem conta: lê apenas a SUA linha, através do token.
 -- Se o sorteio já não for o atual, o nome de quem recebe não é devolvido.
-create or replace function public.reveal(p_token text)
+create or replace function amigo_secreto.reveal(p_token text)
 returns table (
   event_name    text,
   budget_cents  integer,
@@ -77,8 +87,8 @@ as $$
   with t as (
     select rt.*, e.name, e.budget_cents, e.exchange_date, e.participants, e.draw,
            coalesce(e.draw ->> 'id' = rt.draw_id, false) as is_current
-    from public.reveal_tokens rt
-    join public.events e on e.id = rt.event_id
+    from amigo_secreto.reveal_tokens rt
+    join amigo_secreto.events e on e.id = rt.event_id
     where rt.token = upper(replace(p_token, '-', ''))
   )
   select
@@ -100,5 +110,5 @@ as $$
   from t;
 $$;
 
-revoke all on function public.reveal(text) from public;
-grant execute on function public.reveal(text) to anon, authenticated;
+revoke all on function amigo_secreto.reveal(text) from public;
+grant execute on function amigo_secreto.reveal(text) to anon, authenticated;

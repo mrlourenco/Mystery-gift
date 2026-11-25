@@ -35,6 +35,7 @@ interface Result {
   error?: string;
 }
 
+const DB_SCHEMA = 'amigo_secreto';
 const MAX_RECIPIENTS = 200;
 const RESEND_BATCH = 100;
 
@@ -85,10 +86,12 @@ Deno.serve(async (req) => {
   // Cliente com o JWT de quem chama: o RLS garante que só o dono lê o evento.
   const userDb = createClient(url, env('SUPABASE_ANON_KEY'), {
     global: { headers: { Authorization: authorization } },
+    db: { schema: DB_SCHEMA },
     auth: { persistSession: false },
   });
   // Cliente de serviço: só para escrever o registo de envios.
   const adminDb = createClient(url, env('SUPABASE_SERVICE_ROLE_KEY'), {
+    db: { schema: DB_SCHEMA },
     auth: { persistSession: false },
   });
 

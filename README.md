@@ -109,12 +109,33 @@ JSON    = { v: 1, e: evento, b: orçamento (cêntimos), d: data, g: quem dá, r:
    utilizadores anónimos em massa.
 3. No **SQL Editor**, corre os ficheiros de `supabase/migrations/` por ordem (ou usa
    `supabase db push` com a CLI).
-4. Copia a **Project URL** e a **anon public key** (Project Settings → API):
-   - Para desenvolvimento local: `cp .env.example .env.local` e preenche-as.
-   - Para o GitHub Pages: em **Settings → Secrets and variables → Actions → Variables**,
-     cria `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`. A anon key é pública por
-     natureza: a proteção vem do RLS.
-5. Faz push para `main`. A app passa a usar o Supabase automaticamente.
+4. Em **Settings → Data API → Exposed schemas**, acrescenta `amigo_secreto`.
+5. Copia a **Project URL** e a **anon public key** (Project Settings → API) para o
+   ficheiro `.env.production` (versionado). Ambos são públicos por natureza: a proteção
+   vem do RLS. Para desenvolvimento local, usa `.env.local`.
+6. Faz push para `main`. A app passa a usar o Supabase automaticamente.
+
+### Partilhar o projeto com outra app
+
+Tudo vive no schema `amigo_secreto` (tabelas, funções, políticas), por isso não há
+colisões de nomes. Há, no entanto, um cuidado:
+
+> ⚠️ O **login anónimo vale para o projeto inteiro**. Um utilizador anónimo tem o papel
+> `authenticated`. Se a outra app tiver políticas do tipo `to authenticated using (true)`,
+> qualquer visitante do Amigo Secreto passa a ter esse acesso.
+
+Antes de ativar o login anónimo, corre isto no SQL Editor e revê o resultado:
+
+```sql
+select schemaname, tablename, policyname, roles, cmd, qual, with_check
+from pg_policies
+where schemaname <> 'amigo_secreto'
+  and (roles && array['authenticated', 'public']::name[]);
+```
+
+Qualquer política que não verifique o dono (ex.: `auth.uid() = user_id`) precisa de
+excluir anónimos: `and (auth.jwt() ->> 'is_anonymous')::boolean is not true`. Vê também
+se há triggers em `auth.users` (ex.: criar um perfil) que não devam correr para anónimos.
 
 ## Ligar o envio de e-mails (Resend)
 

@@ -1,14 +1,14 @@
 -- Amigo Secreto — e-mails dos participantes, valor mínimo e registo de envios
 
 -- ───────────────────────── Valor mínimo ─────────────────────────
-alter table public.events
+alter table amigo_secreto.events
   add column if not exists min_budget_cents integer
   check (min_budget_cents is null or (min_budget_cents > 0 and min_budget_cents <= budget_cents));
 
 -- A função reveal passa a devolver também o valor mínimo (muda o tipo de retorno → drop + create).
-drop function if exists public.reveal(text);
+drop function if exists amigo_secreto.reveal(text);
 
-create function public.reveal(p_token text)
+create function amigo_secreto.reveal(p_token text)
 returns table (
   event_name       text,
   budget_cents     integer,
@@ -27,8 +27,8 @@ as $$
   with t as (
     select rt.*, e.name, e.budget_cents, e.min_budget_cents, e.exchange_date, e.participants, e.draw,
            coalesce(e.draw ->> 'id' = rt.draw_id, false) as is_current
-    from public.reveal_tokens rt
-    join public.events e on e.id = rt.event_id
+    from amigo_secreto.reveal_tokens rt
+    join amigo_secreto.events e on e.id = rt.event_id
     where rt.token = upper(replace(p_token, '-', ''))
   )
   select
@@ -51,14 +51,14 @@ as $$
   from t;
 $$;
 
-revoke all on function public.reveal(text) from public;
-grant execute on function public.reveal(text) to anon, authenticated;
+revoke all on function amigo_secreto.reveal(text) from public;
+grant execute on function amigo_secreto.reveal(text) to anon, authenticated;
 
 -- ───────────────────────── Registo de envios ─────────────────────────
 -- Um registo por (evento, sorteio, participante). Não guarda o e-mail nem o conteúdo.
 -- Só a Edge Function (service role) escreve aqui; o dono do evento lê o estado.
-create table if not exists public.email_deliveries (
-  event_id    uuid not null references public.events (id) on delete cascade,
+create table if not exists amigo_secreto.email_deliveries (
+  event_id    uuid not null references amigo_secreto.events (id) on delete cascade,
   draw_id     text not null,
   giver_id    text not null,
   status      text not null check (status in ('sent', 'failed')),
@@ -69,23 +69,23 @@ create table if not exists public.email_deliveries (
   primary key (event_id, draw_id, giver_id)
 );
 
-alter table public.email_deliveries enable row level security;
+alter table amigo_secreto.email_deliveries enable row level security;
 
-create policy "envios: o dono do evento lê" on public.email_deliveries
+create policy "envios: o dono do evento lê" on amigo_secreto.email_deliveries
   for select to authenticated using (
-    exists (select 1 from public.events e where e.id = event_id and e.owner_id = (select auth.uid()))
+    exists (select 1 from amigo_secreto.events e where e.id = event_id and e.owner_id = (select auth.uid()))
   );
 
 -- ───────────────────────── RGPD: apagar e-mails ─────────────────────────
 -- Remove os e-mails dos participantes 7 dias depois da data da troca.
-create or replace function public.purge_participant_emails()
+create or replace function amigo_secreto.purge_participant_emails()
 returns integer
 language sql
 security definer
 set search_path = ''
 as $$
   with upd as (
-    update public.events e
+    update amigo_secreto.events e
     set participants = (
       select coalesce(jsonb_agg(p - 'email'), '[]'::jsonb)
       from jsonb_array_elements(e.participants) p
@@ -97,7 +97,10 @@ as $$
   select count(*)::integer from upd;
 $$;
 
-revoke all on function public.purge_participant_emails() from public, anon, authenticated;
+revoke all on function amigo_secreto.purge_participant_emails() from public, anon, authenticated;
+
+-- O registo de envios só é escrito pela Edge Function (service role).
+revoke insert, update, delete on amigo_secreto.email_deliveries from authenticated;
 
 -- Para correr todos os dias, ativa a extensão pg_cron (Database → Extensions) e executa:
---   select cron.schedule('apagar-emails', '17 3 * * *', 'select public.purge_participant_emails()');
+--   select cron.schedule('apagar-emails', '17 3 * * *', 'select amigo_secreto.purge_participant_emails()');
