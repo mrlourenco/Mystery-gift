@@ -1,13 +1,18 @@
-// Edge Function: envia por e-mail (Resend) o resultado do sorteio a cada participante.
+// Edge Function: envia por e-mail o resultado do sorteio a cada participante.
+// Fornecedor: Gmail (SMTP, grátis, sem domínio) se GMAIL_USER estiver definido; senão Resend.
 //
 // POST { eventId: string, giverIds?: string[], resend?: boolean }
 //   - só o dono do evento consegue (o evento é lido com o JWT de quem chama, sujeito a RLS);
 //   - sem `resend`, não volta a enviar a quem já recebeu este sorteio;
 //   - o link usa APP_URL (definido no servidor), nunca um URL enviado pelo cliente.
 //
-// Secrets (supabase secrets set …): RESEND_API_KEY, EMAIL_FROM, APP_URL, [ALLOWED_ORIGIN]
-// (RESEND_API_URL só serve para testes locais.)
+// Secrets:
+//   Gmail:  GMAIL_USER, GMAIL_APP_PASSWORD (palavra-passe de aplicação), [EMAIL_FROM]
+//   Resend: RESEND_API_KEY, EMAIL_FROM
+//   Ambos:  APP_URL, [ALLOWED_ORIGIN]
+// (SMTP_HOST/SMTP_PORT/SMTP_SECURE e RESEND_API_URL só servem para testes locais.)
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import nodemailer from 'npm:nodemailer@6.9.16';
 import { buildDrawEmail } from '../_shared/drawEmail.ts';
 import { formatToken, generateToken } from '../_shared/tokens.ts';
 
@@ -56,14 +61,121 @@ async function sha256(s: string): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ───────────────────────── Fornecedores de e-mail ─────────────────────────
+interface Outgoing {
+  giverId: string;
+  attempt: number;
+  payload: { from: string; to: string[]; subject: string; html: string; text: string };
+}
+interface Outcome {
+  id?: string;
+  error?: string;
+}
+interface Provider {
+  from: string;
+  send(list: Outgoing[], scope: string): Promise<Map<string, Outcome>>;
+}
+
+function pickProvider(): Provider | null {
+  const gmailUser = env('GMAIL_USER');
+  const gmailPass = env('GMAIL_APP_PASSWORD').replace(/\s+/g, '');
+  if (gmailUser && gmailPass) return gmailProvider(gmailUser, gmailPass);
+  const resendKey = env('RESEND_API_KEY');
+  const from = env('EMAIL_FROM');
+  if (resendKey && from) return resendProvider(resendKey, from);
+  return null;
+}
+
+/** Gmail por SMTP (porta 465, TLS). Envia um a um, pela mesma ligação. */
+function gmailProvider(user: string, pass: string): Provider {
+  const from = env('EMAIL_FROM') || `Amigo Secreto <${user}>`;
+  return {
+    from,
+    async send(list) {
+      const out = new Map<string, Outcome>();
+      if (!list.length) return out;
+      const transporter = nodemailer.createTransport({
+        host: env('SMTP_HOST') || 'smtp.gmail.com',
+        port: Number(env('SMTP_PORT') || 465),
+        secure: (env('SMTP_SECURE') || 'true') === 'true',
+        auth: { user, pass },
+      });
+      try {
+        for (const item of list) {
+          try {
+            const info = await transporter.sendMail({
+              from: item.payload.from,
+              to: item.payload.to,
+              subject: item.payload.subject,
+              text: item.payload.text,
+              html: item.payload.html,
+            });
+            out.set(item.giverId, { id: info.messageId });
+          } catch (e) {
+            out.set(item.giverId, { error: smtpError(e) });
+          }
+        }
+      } finally {
+        transporter.close();
+      }
+      return out;
+    },
+  };
+}
+
+function smtpError(e: unknown): string {
+  const err = e as { code?: string; responseCode?: number; message?: string };
+  if (err.code === 'EAUTH' || err.responseCode === 535)
+    return 'O Gmail recusou o login. Confirma GMAIL_USER e a palavra-passe de aplicação.';
+  return err.message ?? 'Erro ao enviar pelo Gmail.';
+}
+
+/** Resend (API HTTP), em lotes de até 100, com chave de idempotência. */
+function resendProvider(apiKey: string, from: string): Provider {
+  return {
+    from,
+    async send(list, scope) {
+      const out = new Map<string, Outcome>();
+      for (let i = 0; i < list.length; i += RESEND_BATCH) {
+        const chunk = list.slice(i, i + RESEND_BATCH);
+        const key = await sha256(
+          `${scope}|${chunk.map((c) => `${c.giverId}:${c.attempt}`).join(',')}`,
+        );
+        let ids: (string | undefined)[] = [];
+        let error: string | undefined;
+        try {
+          const res = await fetch(
+            `${env('RESEND_API_URL') || 'https://api.resend.com'}/emails/batch`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': key,
+              },
+              body: JSON.stringify(chunk.map((c) => c.payload)),
+            },
+          );
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) error = body?.message ?? `Resend respondeu ${res.status}`;
+          else ids = (body?.data ?? []).map((d: { id?: string }) => d.id);
+        } catch (e) {
+          error = e instanceof Error ? e.message : 'Falha de rede ao contactar o Resend.';
+        }
+        chunk.forEach((c, k) => out.set(c.giverId, error ? { error } : { id: ids[k] }));
+      }
+      return out;
+    },
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== 'POST') return json(405, { error: 'Método não suportado.' });
 
-  const RESEND_API_KEY = env('RESEND_API_KEY');
-  const EMAIL_FROM = env('EMAIL_FROM');
   const APP_URL = env('APP_URL');
-  if (!RESEND_API_KEY || !EMAIL_FROM || !APP_URL) {
+  const provider = pickProvider();
+  if (!provider || !APP_URL) {
     return json(500, { error: 'O envio de e-mails não está configurado no servidor.' });
   }
 
@@ -149,7 +261,7 @@ Deno.serve(async (req) => {
 
   // Prepara os e-mails.
   const appUrl = APP_URL.split('#')[0]!;
-  const ready: { giverId: string; payload: Record<string, unknown> }[] = [];
+  const ready: Omit<Outgoing, 'attempt'>[] = [];
   for (const a of targets) {
     const giver = byId.get(a.giverId);
     const receiver = byId.get(a.receiverId);
@@ -171,7 +283,7 @@ Deno.serve(async (req) => {
     ready.push({
       giverId: a.giverId,
       payload: {
-        from: EMAIL_FROM,
+        from: provider.from,
         to: [giver.email],
         subject: mail.subject,
         html: mail.html,
@@ -180,48 +292,31 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Envia em lotes (o Resend aceita até 100 por pedido).
-  for (let i = 0; i < ready.length; i += RESEND_BATCH) {
-    const chunk = ready.slice(i, i + RESEND_BATCH);
-    const attemptKey = chunk.map((c) => `${c.giverId}:${(prev.get(c.giverId)?.attempts ?? 0) + 1}`);
-    const idempotencyKey = await sha256(`${event.id}|${draw.id}|${attemptKey.join(',')}`);
-    let ids: (string | undefined)[] = [];
-    let error: string | undefined;
-    try {
-      const res = await fetch(`${env('RESEND_API_URL') || 'https://api.resend.com'}/emails/batch`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey,
-        },
-        body: JSON.stringify(chunk.map((c) => c.payload)),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) error = out?.message ?? `Resend respondeu ${res.status}`;
-      else ids = (out?.data ?? []).map((d: { id?: string }) => d.id);
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Falha de rede ao contactar o Resend.';
-    }
-
-    const rows = chunk.map((c, k) => ({
+  // Envia e regista o resultado de cada e-mail.
+  const outcomes = await provider.send(
+    ready.map((c) => ({ ...c, attempt: (prev.get(c.giverId)?.attempts ?? 0) + 1 })),
+    `${event.id}|${draw.id}`,
+  );
+  const rows = ready.map((c) => {
+    const o = outcomes.get(c.giverId) ?? { error: 'Sem resposta do servidor de e-mail.' };
+    return {
       event_id: event.id,
       draw_id: draw.id,
       giver_id: c.giverId,
-      status: error ? 'failed' : 'sent',
-      provider_id: ids[k] ?? null,
-      error: error ?? null,
+      status: o.error ? 'failed' : 'sent',
+      provider_id: o.id ?? null,
+      error: o.error ?? null,
       attempts: (prev.get(c.giverId)?.attempts ?? 0) + 1,
       updated_at: new Date().toISOString(),
-    }));
-    await adminDb.from('email_deliveries').upsert(rows);
-    for (const r of rows)
-      results.push({
-        giverId: r.giver_id,
-        status: r.status as Result['status'],
-        error: r.error ?? undefined,
-      });
-  }
+    };
+  });
+  if (rows.length) await adminDb.from('email_deliveries').upsert(rows);
+  for (const r of rows)
+    results.push({
+      giverId: r.giver_id,
+      status: r.status as Result['status'],
+      error: r.error ?? undefined,
+    });
   for (const r of results.filter(
     (r) => r.status === 'failed' && r.error === 'Participante sem e-mail.',
   )) {

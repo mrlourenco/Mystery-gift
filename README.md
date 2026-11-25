@@ -137,7 +137,30 @@ Qualquer política que não verifique o dono (ex.: `auth.uid() = user_id`) preci
 excluir anónimos: `and (auth.jwt() ->> 'is_anonymous')::boolean is not true`. Vê também
 se há triggers em `auth.users` (ex.: criar um perfil) que não devam correr para anónimos.
 
-## Ligar o envio de e-mails (Resend)
+## Ligar o envio de e-mails com o Gmail (grátis, sem domínio)
+
+Os e-mails saem da tua conta Gmail, por SMTP (limite do Gmail: cerca de 500 por dia).
+
+1. Ativa a verificação em 2 passos: myaccount.google.com → Segurança.
+2. Cria uma palavra-passe de aplicação em https://myaccount.google.com/apppasswords
+   (nome: "Amigo Secreto"). São 16 letras; não as partilhes.
+3. No painel do Supabase, em **Edge Functions → Deploy a new function → Via Editor**,
+   dá o nome `send-draw-emails`, cola o conteúdo de
+   `supabase/dashboard/send-draw-emails.ts` (a função num só ficheiro, gerada com
+   `npm run function:single`) e carrega em **Deploy**. Com a CLI:
+   `supabase functions deploy send-draw-emails`.
+4. Em **Edge Functions → Secrets**, cria:
+   - `GMAIL_USER`: o teu endereço Gmail
+   - `GMAIL_APP_PASSWORD`: a palavra-passe de aplicação (os espaços são ignorados)
+   - `APP_URL`: `https://<utilizador>.github.io/Mystery-gift/`
+   - `ALLOWED_ORIGIN`: `https://<utilizador>.github.io`
+5. Em `.env.production`, muda `VITE_EMAIL_ENABLED=true` e faz push para `main`.
+
+Para deixar de enviar em teu nome, apaga a palavra-passe de aplicação na conta Google.
+
+## Ligar o envio de e-mails (Resend, com domínio próprio)
+
+Se `GMAIL_USER` não estiver definido, a função usa o Resend.
 
 Precisas de um **domínio teu** (ex.: `amigosecreto.pt`). Sem domínio verificado, o Resend
 só envia para o e-mail da tua própria conta.
