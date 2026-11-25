@@ -4,3 +4,4 @@ coverage
 node_modules
 package-lock.json
 public/icons/*.png
+supabase/dashboard/send-draw-emails.ts

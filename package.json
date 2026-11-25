@@ -11,7 +11,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "function:single": "node scripts/build-function-single-file.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.2",
