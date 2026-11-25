@@ -20,6 +20,7 @@ export class LocalLinkService implements LinkService {
         encodeReveal({
           eventName: event.name,
           budgetCents: event.budgetCents,
+          minBudgetCents: event.minBudgetCents ?? null,
           exchangeDate: event.exchangeDate,
           giverName: giver.name,
           receiverName: receiver.name,

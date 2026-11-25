@@ -1,31 +1,39 @@
 import { useState, type FormEvent } from 'react';
-import { validateParticipantName, type Participant, type ParticipantId } from '../../domain';
+import {
+  validateParticipant,
+  type Participant,
+  type ParticipantErrors,
+  type ParticipantId,
+  type ParticipantInput,
+} from '../../domain';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
+
+const EMPTY: ParticipantInput = { name: '', email: '' };
 
 export function ParticipantsEditor({
   participants,
   onAdd,
-  onRename,
+  onUpdate,
   onRemove,
 }: {
   participants: Participant[];
-  onAdd: (name: string) => Promise<boolean>;
-  onRename: (id: ParticipantId, name: string) => Promise<boolean>;
+  onAdd: (input: ParticipantInput) => Promise<boolean>;
+  onUpdate: (id: ParticipantId, input: ParticipantInput) => Promise<boolean>;
   onRemove: (p: Participant) => Promise<void>;
 }) {
-  const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<ParticipantInput>(EMPTY);
+  const [errors, setErrors] = useState<ParticipantErrors>({});
   const [editing, setEditing] = useState<ParticipantId | null>(null);
 
   const add = async (ev: FormEvent) => {
     ev.preventDefault();
-    const v = validateParticipantName(name, participants);
-    if (!v.ok) return setError(v.error);
-    setError(null);
-    const submitted = name;
-    setName('');
-    if (!(await onAdd(submitted))) setName((cur) => cur || submitted);
+    const errs = validateParticipant(form, participants);
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    const submitted = form;
+    setForm(EMPTY);
+    if (!(await onAdd(submitted))) setForm((cur) => (cur.name || cur.email ? cur : submitted));
   };
 
   return (
@@ -33,23 +41,40 @@ export function ParticipantsEditor({
       <h2 id="participantes-titulo">
         Participantes <span className="badge">{participants.length}</span>
       </h2>
-      <form onSubmit={add} noValidate className="inline-form">
+      <form onSubmit={add} noValidate className="participant-form">
         <TextField
-          label="Nome do participante"
-          value={name}
+          label="Nome"
+          value={form.name}
           onChange={(e) => {
-            setName(e.target.value);
-            if (error) setError(null);
+            setForm({ ...form, name: e.target.value });
+            if (errors.name) setErrors({ ...errors, name: undefined });
           }}
           autoComplete="off"
           maxLength={50}
-          error={error}
-          className="grow"
+          error={errors.name}
+        />
+        <TextField
+          label="E-mail"
+          type="email"
+          inputMode="email"
+          autoCapitalize="off"
+          spellCheck={false}
+          value={form.email}
+          onChange={(e) => {
+            setForm({ ...form, email: e.target.value });
+            if (errors.email) setErrors({ ...errors, email: undefined });
+          }}
+          autoComplete="off"
+          maxLength={254}
+          error={errors.email}
         />
         <Button type="submit" variant="primary">
           Adicionar
         </Button>
       </form>
+      <p className="field-hint">
+        O e-mail só é usado para enviar a cada pessoa o resultado do sorteio.
+      </p>
 
       {participants.length === 0 ? (
         <p className="muted">Ainda sem participantes.</p>
@@ -62,13 +87,20 @@ export function ParticipantsEditor({
                 participant={p}
                 all={participants}
                 onCancel={() => setEditing(null)}
-                onSave={async (n) => {
-                  if (await onRename(p.id, n)) setEditing(null);
+                onSave={async (input) => {
+                  if (await onUpdate(p.id, input)) setEditing(null);
                 }}
               />
             ) : (
               <li key={p.id} className="participant">
-                <span className="participant-name">{p.name}</span>
+                <span className="participant-info">
+                  <span className="participant-name">{p.name}</span>
+                  {p.email ? (
+                    <span className="participant-email">{p.email}</span>
+                  ) : (
+                    <span className="chip chip-warning">Falta o e-mail</span>
+                  )}
+                </span>
                 <Button
                   variant="ghost"
                   onClick={() => setEditing(p.id)}
@@ -100,37 +132,52 @@ function EditRow({
 }: {
   participant: Participant;
   all: Participant[];
-  onSave: (name: string) => Promise<void>;
+  onSave: (input: ParticipantInput) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState(participant.name);
-  const [error, setError] = useState<string | null>(null);
+  const [value, setValue] = useState<ParticipantInput>({
+    name: participant.name,
+    email: participant.email ?? '',
+  });
+  const [errors, setErrors] = useState<ParticipantErrors>({});
   return (
     <li className="participant participant-editing">
       <form
-        className="inline-form"
+        className="participant-form"
         noValidate
         onSubmit={async (ev) => {
           ev.preventDefault();
-          const v = validateParticipantName(value, all, participant.id);
-          if (!v.ok) return setError(v.error);
-          await onSave(value);
+          const errs = validateParticipant(value, all, participant.id);
+          setErrors(errs);
+          if (!Object.keys(errs).length) await onSave(value);
         }}
         onKeyDown={(e) => e.key === 'Escape' && onCancel()}
       >
         <TextField
-          label={`Novo nome para ${participant.name}`}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          label={`Nome de ${participant.name}`}
+          value={value.name}
+          onChange={(e) => setValue({ ...value, name: e.target.value })}
           autoFocus
           maxLength={50}
-          error={error}
-          className="grow"
+          error={errors.name}
         />
-        <Button type="submit" variant="primary">
-          Guardar
-        </Button>
-        <Button onClick={onCancel}>Cancelar</Button>
+        <TextField
+          label={`E-mail de ${participant.name}`}
+          type="email"
+          inputMode="email"
+          autoCapitalize="off"
+          spellCheck={false}
+          value={value.email}
+          onChange={(e) => setValue({ ...value, email: e.target.value })}
+          maxLength={254}
+          error={errors.email}
+        />
+        <div className="actions actions-tight">
+          <Button type="submit" variant="primary">
+            Guardar
+          </Button>
+          <Button onClick={onCancel}>Cancelar</Button>
+        </div>
       </form>
     </li>
   );

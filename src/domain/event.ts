@@ -1,7 +1,13 @@
 import { drawAssignments, type Rng } from './draw';
 import { randomId, shortId, type IdGenerator } from './ids';
-import type { EventDetails, GiftEvent, Participant, ParticipantId } from './types';
-import { cleanName, validateParticipantName } from './validation';
+import type {
+  EventDetails,
+  GiftEvent,
+  Participant,
+  ParticipantId,
+  ParticipantInput,
+} from './types';
+import { cleanEmail, cleanName, participantsMissingEmail, validateParticipant } from './validation';
 
 /** Operações puras sobre um evento. Devolvem sempre um novo objeto. */
 
@@ -26,6 +32,7 @@ export function createEvent(
     id: (opts.id ?? randomId)(),
     name: cleanName(details.name),
     budgetCents: details.budgetCents,
+    minBudgetCents: details.minBudgetCents,
     exchangeDate: details.exchangeDate,
     participants: [],
     exclusions: [],
@@ -51,32 +58,45 @@ export function updateDetails(
 }
 
 /** Alterar participantes invalida o sorteio existente. */
+function assertParticipant(input: ParticipantInput, e: GiftEvent, ignoreId?: ParticipantId) {
+  const errors = validateParticipant(input, e.participants, ignoreId);
+  const first = errors.name ?? errors.email;
+  if (first) throw new DomainError(first);
+}
+
 export function addParticipant(
   e: GiftEvent,
-  name: string,
+  input: ParticipantInput,
   opts: { id?: IdGenerator; clock?: Clock } = {},
 ): GiftEvent {
-  const v = validateParticipantName(name, e.participants);
-  if (!v.ok) throw new DomainError(v.error);
-  const p: Participant = { id: (opts.id ?? randomId)(), name: cleanName(name) };
+  assertParticipant(input, e);
+  const p: Participant = {
+    id: (opts.id ?? randomId)(),
+    name: cleanName(input.name),
+    email: cleanEmail(input.email),
+  };
   return touch(e, opts.clock ?? systemClock, {
     participants: [...e.participants, p],
     draw: null,
   });
 }
 
-export function renameParticipant(
+export function updateParticipant(
   e: GiftEvent,
   id: ParticipantId,
-  name: string,
+  input: ParticipantInput,
   clock: Clock = systemClock,
 ): GiftEvent {
-  const v = validateParticipantName(name, e.participants, id);
-  if (!v.ok) throw new DomainError(v.error);
-  // Renomear não altera os pares, mas os links antigos têm o nome antigo → invalida.
+  assertParticipant(input, e, id);
+  const current = e.participants.find((p) => p.id === id);
+  const name = cleanName(input.name);
+  const email = cleanEmail(input.email);
+  // Mudar o nome invalida o sorteio (os links antigos têm o nome antigo).
+  // Mudar só o e-mail (ex.: corrigir um endereço errado) mantém o sorteio.
+  const nameChanged = current?.name !== name;
   return touch(e, clock, {
-    participants: e.participants.map((p) => (p.id === id ? { ...p, name: cleanName(name) } : p)),
-    draw: null,
+    participants: e.participants.map((p) => (p.id === id ? { ...p, name, email } : p)),
+    draw: nameChanged ? null : e.draw,
   });
 }
 
@@ -97,6 +117,10 @@ export function runDraw(
   opts: { rng?: Rng; id?: IdGenerator; clock?: Clock } = {},
 ): GiftEvent {
   const clock = opts.clock ?? systemClock;
+  const missing = participantsMissingEmail(e);
+  if (missing.length > 0) {
+    throw new DomainError(`Falta o e-mail de: ${missing.map((p) => p.name).join(', ')}.`);
+  }
   const assignments = drawAssignments(e.participants, e.exclusions, opts.rng);
   return touch(e, clock, {
     draw: { id: (opts.id ?? shortId)(), createdAt: clock.now(), assignments },
@@ -105,4 +129,17 @@ export function runDraw(
 
 export function participantById(e: GiftEvent, id: ParticipantId): Participant | undefined {
   return e.participants.find((p) => p.id === id);
+}
+
+/**
+ * Completa eventos guardados por versões antigas da app
+ * (sem e-mail nos participantes nem valor mínimo).
+ */
+export function normalizeEvent(e: GiftEvent): GiftEvent {
+  return {
+    ...e,
+    minBudgetCents: e.minBudgetCents ?? null,
+    exclusions: e.exclusions ?? [],
+    participants: (e.participants ?? []).map((p) => ({ ...p, email: p.email ?? '' })),
+  };
 }

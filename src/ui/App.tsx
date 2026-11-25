@@ -4,6 +4,7 @@ import type { AuthService } from '../auth';
 import { AuthProvider } from '../auth';
 import { RepositoryProvider, type EventRepository } from '../data';
 import { LinkServiceProvider, type LinkService } from '../links';
+import { MailerProvider, type DrawMailer } from '../notify';
 import { EnterCodePage } from './pages/EnterCodePage';
 import { EventListPage } from './pages/EventListPage';
 import { EventPage } from './pages/EventPage';
@@ -30,6 +31,8 @@ export interface Services {
   repository: EventRepository;
   auth: AuthService;
   links: LinkService;
+  /** null = sem servidor de e-mail (usa mailto:). */
+  mailer: DrawMailer | null;
 }
 
 export function ServicesProvider({
@@ -42,7 +45,9 @@ export function ServicesProvider({
   return (
     <AuthProvider service={services.auth}>
       <RepositoryProvider repository={services.repository}>
-        <LinkServiceProvider service={services.links}>{children}</LinkServiceProvider>
+        <LinkServiceProvider service={services.links}>
+          <MailerProvider mailer={services.mailer}>{children}</MailerProvider>
+        </LinkServiceProvider>
       </RepositoryProvider>
     </AuthProvider>
   );

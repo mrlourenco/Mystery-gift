@@ -17,7 +17,12 @@ async function createServices(): Promise<Services> {
   }
   const repository: EventRepository =
     typeof indexedDB !== 'undefined' ? new LocalEventRepository() : new InMemoryEventRepository();
-  return { repository, auth: new NoAuthService(), links: new LocalLinkService(repository) };
+  return {
+    repository,
+    auth: new NoAuthService(),
+    links: new LocalLinkService(repository),
+    mailer: null, // sem servidor: envio por mailto:
+  };
 }
 
 void createServices().then((services) =>

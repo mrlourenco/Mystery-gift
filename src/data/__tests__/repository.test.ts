@@ -9,7 +9,7 @@ const impls: [string, () => EventRepository][] = [
 ];
 
 const make = (name: string, updatedAt: string): GiftEvent => ({
-  ...createEvent({ name, budgetCents: 1000, exchangeDate: '2026-12-24' }),
+  ...createEvent({ name, budgetCents: 1000, minBudgetCents: null, exchangeDate: '2026-12-24' }),
   updatedAt,
 });
 
@@ -17,7 +17,7 @@ describe.each(impls)('%s', (_, factory) => {
   it('guarda, lê, lista e apaga', async () => {
     const repo = factory();
     let a = make('A', '2026-01-01T00:00:00Z');
-    for (const n of ['Ana', 'Rui', 'Eva']) a = addParticipant(a, n);
+    for (const n of ['Ana', 'Rui', 'Eva']) a = addParticipant(a, { name: n, email: `${n}@x.pt` });
     a = { ...runDraw(a), updatedAt: '2026-01-01T00:00:00Z' };
     const b = make('B', '2026-02-01T00:00:00Z');
     await repo.save(a);

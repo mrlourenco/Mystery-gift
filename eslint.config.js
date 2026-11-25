@@ -18,6 +18,11 @@ export default tseslint.config(
     },
   },
   {
+    // Edge Functions (Deno)
+    files: ['supabase/functions/**/*.ts'],
+    languageOptions: { globals: { ...globals.browser, Deno: 'readonly' } },
+  },
+  {
     files: ['scripts/**/*.mjs', '*.js'],
     extends: [js.configs.recommended, prettier],
     languageOptions: { globals: globals.node },

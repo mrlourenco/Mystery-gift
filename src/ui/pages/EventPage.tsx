@@ -5,10 +5,11 @@ import {
   DomainError,
   DrawImpossibleError,
   formatDate,
-  formatEuros,
+  formatBudget,
   MIN_PARTICIPANTS,
   removeParticipant,
-  renameParticipant,
+  updateParticipant,
+  participantsMissingEmail,
   runDraw,
   updateDetails,
   type GiftEvent,
@@ -70,11 +71,15 @@ export function EventPage() {
       await update((e) => runDraw(e));
       navigate(`/eventos/${event.id}/resultado`);
     } catch (e) {
-      setDrawError(e instanceof DrawImpossibleError ? e.message : SAVE_ERROR);
+      setDrawError(
+        e instanceof DrawImpossibleError || e instanceof DomainError ? e.message : SAVE_ERROR,
+      );
     }
   };
 
   const missing = Math.max(0, MIN_PARTICIPANTS - event.participants.length);
+  const withoutEmail = participantsMissingEmail(event);
+  const blocked = missing > 0 || withoutEmail.length > 0;
 
   return (
     <Layout title={event.name} back={{ to: '/', label: 'Eventos' }}>
@@ -111,8 +116,8 @@ export function EventPage() {
                 <dd>{formatDate(event.exchangeDate)}</dd>
               </div>
               <div>
-                <dt>Orçamento</dt>
-                <dd>até {formatEuros(event.budgetCents)}</dd>
+                <dt>Valor do presente</dt>
+                <dd>{formatBudget(event.budgetCents, event.minBudgetCents)}</dd>
               </div>
             </dl>
             <Button onClick={() => setEditingDetails(true)}>Editar detalhes</Button>
@@ -122,10 +127,14 @@ export function EventPage() {
 
       <ParticipantsEditor
         participants={event.participants}
-        onAdd={async (name) => (await confirmIfDrawn()) && apply((e) => addParticipant(e, name))}
-        onRename={async (pid, name) =>
-          (await confirmIfDrawn()) && apply((e) => renameParticipant(e, pid, name))
-        }
+        onAdd={async (input) => (await confirmIfDrawn()) && apply((e) => addParticipant(e, input))}
+        onUpdate={async (pid, input) => {
+          // Corrigir só o e-mail não apaga o sorteio; mudar o nome apaga.
+          const current = event.participants.find((p) => p.id === pid);
+          const nameChanged = current?.name.trim() !== input.name.trim();
+          if (nameChanged && !(await confirmIfDrawn())) return false;
+          return apply((e) => updateParticipant(e, pid, input));
+        }}
         onRemove={async (p) => {
           const ok = await confirm({
             title: `Remover ${p.name}?`,
@@ -158,10 +167,20 @@ export function EventPage() {
                 poder sortear (mínimo {MIN_PARTICIPANTS}).
               </p>
             )}
+            {withoutEmail.length > 0 && (
+              <p className="alert alert-warning" id="falta-email">
+                Falta o e-mail de: {withoutEmail.map((p) => p.name).join(', ')}. Carrega em «Editar»
+                para o acrescentar.
+              </p>
+            )}
             <Button
               variant="primary"
-              disabled={missing > 0}
-              aria-describedby={missing > 0 ? 'falta' : undefined}
+              disabled={blocked}
+              aria-describedby={
+                [missing > 0 ? 'falta' : '', withoutEmail.length ? 'falta-email' : '']
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
               onClick={doDraw}
             >
               Fazer sorteio

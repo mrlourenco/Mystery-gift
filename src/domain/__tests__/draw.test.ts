@@ -8,7 +8,7 @@ import {
 } from '..';
 
 const people = (n: number): Participant[] =>
-  Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `Pessoa ${i}` }));
+  Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `Pessoa ${i}`, email: `p${i}@x.pt` }));
 
 /** RNG determinístico (mulberry32) para reprodutibilidade. */
 function seeded(seed: number) {
@@ -49,7 +49,7 @@ describe('drawAssignments', () => {
   });
 
   it('rejeita IDs repetidos', () => {
-    const ps = [...people(3), { id: 'p0', name: 'Outra' }];
+    const ps = [...people(3), { id: 'p0', name: 'Outra', email: 'o@x.pt' }];
     expect(() => drawAssignments(ps)).toThrow(DrawImpossibleError);
   });
 

@@ -4,6 +4,7 @@ import { createSupabase } from './client';
 import { SupabaseAuthService } from './SupabaseAuthService';
 import { SupabaseEventRepository } from './SupabaseEventRepository';
 import { SupabaseLinkService } from './SupabaseLinkService';
+import { SupabaseDrawMailer } from './SupabaseDrawMailer';
 
 /** Composição dos serviços quando o Supabase está configurado. */
 export function createSupabaseServices(url: string, anonKey: string): Services {
@@ -16,5 +17,10 @@ export function createSupabaseServices(url: string, anonKey: string): Services {
     remote,
     new LocalEventRepository('amigo-secreto-cache'),
   );
-  return { auth, repository, links: new SupabaseLinkService(supabase, ensure) };
+  return {
+    auth,
+    repository,
+    links: new SupabaseLinkService(supabase, ensure),
+    mailer: new SupabaseDrawMailer(supabase, ensure),
+  };
 }

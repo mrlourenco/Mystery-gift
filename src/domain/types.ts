@@ -6,6 +6,8 @@ export interface Participant {
   id: ParticipantId;
   /** Nome tal como foi escrito (com trim). A unicidade usa `normalizeName`. */
   name: string;
+  /** Obrigatório para sortear (é para onde vai o resultado). Guardado em minúsculas. */
+  email: string;
 }
 
 /** Exclusão direcional: `giverId` não pode tirar `receiverId`. Um casal = 2 exclusões. */
@@ -31,8 +33,10 @@ export interface Draw {
 export interface GiftEvent {
   id: EventId;
   name: string;
-  /** Inteiro em cêntimos. */
+  /** Valor máximo, inteiro em cêntimos. */
   budgetCents: number;
+  /** Valor mínimo (opcional), inteiro em cêntimos. */
+  minBudgetCents: number | null;
   /** 'YYYY-MM-DD' */
   exchangeDate: string;
   participants: Participant[];
@@ -48,5 +52,11 @@ export interface GiftEvent {
 export interface EventDetails {
   name: string;
   budgetCents: number;
+  minBudgetCents: number | null;
   exchangeDate: string;
+}
+
+export interface ParticipantInput {
+  name: string;
+  email: string;
 }

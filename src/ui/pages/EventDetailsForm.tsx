@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
-  formatEuros,
+  formatBudget,
   parseEuros,
   validateEventDetails,
   type EventDetails,
@@ -22,6 +22,9 @@ export function EventDetailsForm({
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [budget, setBudget] = useState(initial ? centsToInput(initial.budgetCents) : '');
+  const [minBudget, setMinBudget] = useState(
+    initial?.minBudgetCents ? centsToInput(initial.minBudgetCents) : '',
+  );
   const [date, setDate] = useState(initial?.exchangeDate ?? '');
   const [errors, setErrors] = useState<EventDetailsErrors>({});
 
@@ -30,6 +33,7 @@ export function EventDetailsForm({
     const details: EventDetails = {
       name,
       budgetCents: parseEuros(budget) ?? NaN,
+      minBudgetCents: minBudget.trim() ? (parseEuros(minBudget) ?? NaN) : null,
       exchangeDate: date,
     };
     const errs = validateEventDetails(details);
@@ -37,7 +41,8 @@ export function EventDetailsForm({
     if (Object.keys(errs).length === 0) await onSubmit(details);
   };
 
-  const parsed = parseEuros(budget);
+  const parsedMax = parseEuros(budget);
+  const parsedMin = minBudget.trim() ? parseEuros(minBudget) : null;
 
   return (
     <form onSubmit={submit} noValidate className="form">
@@ -51,17 +56,36 @@ export function EventDetailsForm({
         required
         error={errors.name}
       />
-      <TextField
-        label="Orçamento máximo (€)"
-        value={budget}
-        onChange={(e) => setBudget(e.target.value)}
-        inputMode="decimal"
-        placeholder="Ex.: 20"
-        autoComplete="off"
-        required
-        hint={parsed ? `Até ${formatEuros(parsed)} por presente` : undefined}
-        error={errors.budgetCents}
-      />
+      <fieldset className="fieldset">
+        <legend>Valor do presente</legend>
+        <div className="field-row">
+          <TextField
+            label="Mínimo (€)"
+            value={minBudget}
+            onChange={(e) => setMinBudget(e.target.value)}
+            inputMode="decimal"
+            placeholder="Opcional"
+            autoComplete="off"
+            error={errors.minBudgetCents}
+          />
+          <TextField
+            label="Máximo (€)"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            inputMode="decimal"
+            placeholder="Ex.: 20"
+            autoComplete="off"
+            required
+            error={errors.budgetCents}
+          />
+        </div>
+        {parsedMax ? (
+          <p className="field-hint">
+            Cada presente:{' '}
+            {formatBudget(parsedMax, parsedMin && parsedMin <= parsedMax ? parsedMin : null)}
+          </p>
+        ) : null}
+      </fieldset>
       <TextField
         label="Data da troca"
         type="date"

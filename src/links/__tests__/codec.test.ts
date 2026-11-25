@@ -13,6 +13,7 @@ import {
 const sample: RevealData = {
   eventName: 'Natal da Família',
   budgetCents: 2550,
+  minBudgetCents: null,
   exchangeDate: '2026-12-24',
   giverName: 'Ana',
   receiverName: 'Rui',
@@ -41,6 +42,41 @@ describe('codec', () => {
     expect(
       atob(code.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((code.length + 3) % 4)),
     ).not.toContain('Rui');
+  });
+
+  it('inclui o valor mínimo (payload v2)', () => {
+    const d = { ...sample, minBudgetCents: 1000 };
+    expect(decodeReveal(encodeReveal(d))).toEqual(d);
+  });
+
+  it('continua a abrir links v1 (sem valor mínimo)', () => {
+    // Link real gerado pela versão anterior: { v: 1, e: 'Natal', b: 2000, d: '2026-12-24', g: 'Ana', r: 'Rui', k: 'abcd1234' }
+    const KEY = new TextEncoder().encode('amigo-secreto·v1');
+    const json = JSON.stringify({
+      v: 1,
+      e: 'Natal',
+      b: 2000,
+      d: '2026-12-24',
+      g: 'Ana',
+      r: 'Rui',
+      k: 'abcd1234',
+    });
+    const bytes = new TextEncoder()
+      .encode(json)
+      .map((b, i) => b ^ KEY[i % KEY.length]! ^ (i & 0xff));
+    const code = btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    expect(decodeReveal(code)).toEqual({
+      eventName: 'Natal',
+      budgetCents: 2000,
+      minBudgetCents: null,
+      exchangeDate: '2026-12-24',
+      giverName: 'Ana',
+      receiverName: 'Rui',
+      drawId: 'abcd1234',
+    });
   });
 
   it('rejeita códigos inválidos', () => {
@@ -88,8 +124,13 @@ describe('LocalLinkService', () => {
   it('gera um código por participante e resolve-o', async () => {
     const { LocalLinkService } = await import('..');
     const { createEvent, addParticipant, runDraw } = await import('../../domain');
-    let e = createEvent({ name: 'Natal', budgetCents: 1000, exchangeDate: '2026-12-24' });
-    for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, n);
+    let e = createEvent({
+      name: 'Natal',
+      budgetCents: 1000,
+      minBudgetCents: 500,
+      exchangeDate: '2026-12-24',
+    });
+    for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, { name: n, email: `${n}@x.pt` });
     e = runDraw(e);
     const svc = new LocalLinkService();
     const codes = await svc.codesFor(e);
@@ -99,6 +140,7 @@ describe('LocalLinkService', () => {
     expect(r.status).toBe('ok');
     if (r.status === 'ok') {
       expect(r.data.giverName).toBe('Ana');
+      expect(r.data.minBudgetCents).toBe(500);
       expect(r.isCurrent).toBeNull();
     }
     expect(svc.parseInput(`https://x/#/r/${code}`)).toBe(code);
@@ -110,8 +152,13 @@ describe('LocalLinkService', () => {
     const { LocalLinkService } = await import('..');
     const { InMemoryEventRepository } = await import('../../data');
     const { createEvent, addParticipant, runDraw } = await import('../../domain');
-    let e = createEvent({ name: 'Natal', budgetCents: 1000, exchangeDate: '2026-12-24' });
-    for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, n);
+    let e = createEvent({
+      name: 'Natal',
+      budgetCents: 1000,
+      minBudgetCents: 500,
+      exchangeDate: '2026-12-24',
+    });
+    for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, { name: n, email: `${n}@x.pt` });
     const first = runDraw(e);
     const repo = new InMemoryEventRepository([first]);
     const svc = new LocalLinkService(repo);

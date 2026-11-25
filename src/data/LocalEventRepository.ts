@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { EventId, GiftEvent } from '../domain';
+import { normalizeEvent, type EventId, type GiftEvent } from '../domain';
 import type { EventRepository } from './EventRepository';
 
 interface Schema extends DBSchema {
@@ -23,11 +23,12 @@ export class LocalEventRepository implements EventRepository {
 
   async list(): Promise<GiftEvent[]> {
     const all = await (await this.db).getAllFromIndex('events', 'byUpdatedAt');
-    return all.reverse();
+    return all.reverse().map(normalizeEvent);
   }
 
   async get(id: EventId): Promise<GiftEvent | null> {
-    return (await (await this.db).get('events', id)) ?? null;
+    const e = await (await this.db).get('events', id);
+    return e ? normalizeEvent(e) : null;
   }
 
   async save(event: GiftEvent): Promise<void> {

@@ -163,18 +163,18 @@ a {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
-.actions-wrap .btn-primary {
+/* A ação principal vem primeiro e ocupa a linha toda; se sobrar um botão sozinho, também. */
+.actions-wrap > .btn:first-child,
+.actions-wrap > .btn:last-child:nth-child(even) {
   grid-column: 1 / -1;
-  order: -1;
 }
-@media (min-width: 520px) {
-  .actions-wrap {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .actions-wrap .btn-primary {
-    grid-column: auto;
-    order: 0;
-  }
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 /* Formulários */
@@ -237,6 +237,28 @@ a {
 }
 .inline-form:has(.field-error) > .btn {
   margin-top: 1.75rem;
+}
+
+.fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.fieldset legend {
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.field-row > .field {
+  min-width: 0;
 }
 
 /* Secções e cartões */
@@ -314,7 +336,10 @@ dd {
   flex-direction: column;
   align-items: stretch;
   padding: 1rem;
-  gap: 0.75rem;
+  gap: 0.5rem;
+}
+.card-result .actions-wrap {
+  margin-top: 0.25rem;
 }
 
 .participant-list {
@@ -328,9 +353,65 @@ dd {
   border-top: 1px solid var(--border);
   padding-block: 0.25rem;
 }
-.participant-name {
+.participant-info {
   flex: 1;
+  min-width: 0;
+  display: grid;
+  padding-block: 0.25rem;
+}
+.participant-name {
   overflow-wrap: anywhere;
+}
+.participant-email {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.participant-form {
+  display: grid;
+  gap: 0.75rem;
+}
+@media (min-width: 560px) {
+  .participant-form {
+    grid-template-columns: 1fr 1.3fr auto;
+    align-items: start;
+  }
+  .participant-form > .btn {
+    margin-top: 1.75rem;
+  }
+  .participant-editing .participant-form {
+    grid-template-columns: 1fr 1.3fr;
+  }
+  .participant-editing .actions {
+    grid-column: 1 / -1;
+  }
+}
+.actions-tight {
+  margin: 0;
+}
+.chip {
+  justify-self: start;
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.chip-warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.chip-ok {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+.chip-error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+.chip-neutral {
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
 .participant-editing {
   display: block;

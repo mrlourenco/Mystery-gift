@@ -9,8 +9,13 @@ import { SupabaseLinkService } from '../SupabaseLinkService';
 import { formatToken, generateToken, normalizeToken, TOKEN_ALPHABET } from '../tokens';
 
 function drawnEvent(): GiftEvent {
-  let e = createEvent({ name: 'Natal', budgetCents: 2000, exchangeDate: '2026-12-24' });
-  for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, n);
+  let e = createEvent({
+    name: 'Natal',
+    budgetCents: 2000,
+    minBudgetCents: 1000,
+    exchangeDate: '2026-12-24',
+  });
+  for (const n of ['Ana', 'Rui', 'Eva']) e = addParticipant(e, { name: n, email: `${n}@x.pt` });
   return runDraw(e);
 }
 
@@ -52,7 +57,12 @@ describe('CachingEventRepository', () => {
 
   it('lê do remoto e atualiza a cache (incluindo remoções)', async () => {
     const a = drawnEvent();
-    const stale = createEvent({ name: 'Velho', budgetCents: 1, exchangeDate: '2026-01-01' });
+    const stale = createEvent({
+      name: 'Velho',
+      budgetCents: 1,
+      minBudgetCents: null,
+      exchangeDate: '2026-01-01',
+    });
     const remote = new InMemoryEventRepository([a]);
     const cache = new InMemoryEventRepository([stale]);
     const repo = new CachingEventRepository(remote, cache);
@@ -119,6 +129,7 @@ describe('SupabaseLinkService', () => {
   const row = {
     event_name: 'Natal',
     budget_cents: 2000,
+    min_budget_cents: 1000,
     exchange_date: '2026-12-24',
     giver_name: 'Ana',
     receiver_name: 'Rui',
@@ -129,7 +140,11 @@ describe('SupabaseLinkService', () => {
   it('resolve um token válido', async () => {
     const { client } = fakeSupabase({ rpc: { data: [row], error: null } });
     const r = await new SupabaseLinkService(client, ensure).resolve('aaaa-aaaa-aaaa');
-    expect(r).toMatchObject({ status: 'ok', isCurrent: true, data: { receiverName: 'Rui' } });
+    expect(r).toMatchObject({
+      status: 'ok',
+      isCurrent: true,
+      data: { receiverName: 'Rui', minBudgetCents: 1000 },
+    });
     expect(client.rpc).toHaveBeenCalledWith('reveal', { p_token: 'AAAAAAAAAAAA' });
   });
 
@@ -160,6 +175,7 @@ describe('SupabaseLinkService', () => {
     const code = encodeReveal({
       eventName: 'Natal',
       budgetCents: 2000,
+      minBudgetCents: null,
       exchangeDate: '2026-12-24',
       giverName: 'Ana',
       receiverName: 'Rui',

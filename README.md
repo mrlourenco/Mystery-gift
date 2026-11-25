@@ -9,6 +9,8 @@ tocar, descobre a quem vai oferecer o presente.
 - Dois modos, escolhidos automaticamente pelas variáveis de ambiente:
   - **Local** (por omissão): dados em IndexedDB e resultado codificado no próprio link
   - **Supabase**: dados no Postgres com RLS, login anónimo e links com tokens curtos
+- Envio do resultado por e-mail (Resend, através de uma Edge Function do Supabase) ou,
+  sem servidor, pela app de e-mail do próprio telemóvel (`mailto:`)
 - Interface em português de Portugal, mobile-first, com modo claro e escuro
 
 ## Desenvolvimento
@@ -42,10 +44,12 @@ src/
 ├─ data/     EventRepository + LocalEventRepository (IndexedDB) + provider React
 ├─ auth/     AuthService + NoAuthService (sempre "anónimo") + provider React
 ├─ links/    codificação do link pessoal e partilha (Web Share / wa.me)
+├─ notify/   envio por e-mail: interface DrawMailer e alternativa mailto:
 ├─ config/   leitura de import.meta.env
 ├─ supabase/ implementações Supabase (auth, repositório, links) — carregado só se configurado
 └─ ui/       páginas, componentes e estilos
-supabase/migrations/  esquema SQL (tabelas, RLS, função reveal)
+supabase/migrations/  esquema SQL (tabelas, RLS, função reveal, registo de envios)
+supabase/functions/   Edge Function send-draw-emails (Deno) + código partilhado (_shared/)
 ```
 
 | Interface         | Modo local                   | Modo Supabase                                        |
@@ -53,6 +57,7 @@ supabase/migrations/  esquema SQL (tabelas, RLS, função reveal)
 | `EventRepository` | `LocalEventRepository`       | `CachingEventRepository(Supabase…, IndexedDB)`       |
 | `AuthService`     | `NoAuthService`              | `SupabaseAuthService` (login anónimo)                |
 | `LinkService`     | `LocalLinkService` (payload) | `SupabaseLinkService` (tokens; aceita links antigos) |
+| `DrawMailer`      | `null` → botões `mailto:`    | `SupabaseDrawMailer` (Edge Function + Resend)        |
 
 - `domain/` não depende de React nem do armazenamento. O sorteio
   (`drawAssignments`) usa backtracking com shuffle e já aceita uma lista de exclusões
@@ -102,7 +107,7 @@ JSON    = { v: 1, e: evento, b: orçamento (cêntimos), d: data, g: quem dá, r:
 2. Em **Authentication → Sign In / Providers**, ativa **Allow anonymous sign-ins**.
    Recomendado: ativa também o CAPTCHA (Turnstile/hCaptcha) para evitar a criação de
    utilizadores anónimos em massa.
-3. No **SQL Editor**, corre `supabase/migrations/20261122000000_init.sql` (ou usa
+3. No **SQL Editor**, corre os ficheiros de `supabase/migrations/` por ordem (ou usa
    `supabase db push` com a CLI).
 4. Copia a **Project URL** e a **anon public key** (Project Settings → API):
    - Para desenvolvimento local: `cp .env.example .env.local` e preenche-as.
@@ -110,6 +115,47 @@ JSON    = { v: 1, e: evento, b: orçamento (cêntimos), d: data, g: quem dá, r:
      cria `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`. A anon key é pública por
      natureza: a proteção vem do RLS.
 5. Faz push para `main`. A app passa a usar o Supabase automaticamente.
+
+## Ligar o envio de e-mails (Resend)
+
+Precisas de um **domínio teu** (ex.: `amigosecreto.pt`). Sem domínio verificado, o Resend
+só envia para o e-mail da tua própria conta.
+
+1. Cria uma conta em [resend.com](https://resend.com).
+2. Em **Domains → Add domain**, adiciona o domínio e cria no teu fornecedor de DNS os
+   registos que o Resend indicar (SPF, DKIM). Espera até o domínio ficar "Verified".
+3. Em **API Keys**, cria uma chave com permissão **Sending access**.
+4. Com a [CLI do Supabase](https://supabase.com/docs/guides/cli):
+
+   ```bash
+   supabase login
+   supabase link --project-ref <ref-do-projeto>
+   supabase secrets set \
+     RESEND_API_KEY=re_xxx \
+     EMAIL_FROM="Amigo Secreto <amigo@o-teu-dominio.pt>" \
+     APP_URL=https://<utilizador>.github.io/Mystery-gift/ \
+     ALLOWED_ORIGIN=https://<utilizador>.github.io
+   supabase functions deploy send-draw-emails
+   ```
+
+5. Opcional (RGPD): ativa a extensão `pg_cron` e agenda `purge_participant_emails()`
+   (o comando está no fim de `supabase/migrations/20261125000000_emails.sql`). Isto apaga
+   os e-mails dos participantes 7 dias depois da data da troca.
+
+Como funciona:
+
+- No ecrã **Enviar o resultado**, o botão **Enviar e-mails a todos** chama a função
+  `send-draw-emails`. A função lê o evento com a sessão de quem organiza (o RLS garante
+  que é o dono), gera os tokens que faltarem e envia através do Resend, em lotes de até 100.
+- Cada e-mail tem o valor, a data, o link do envelope, o código e, no fim, o nome de
+  quem calhou. O nome fica depois do link para não aparecer na pré-visualização da
+  notificação.
+- O estado de cada envio (enviado ou falhou) fica em `email_deliveries`, sem guardar o
+  e-mail nem o conteúdo. Não se envia duas vezes o mesmo sorteio à mesma pessoa, a não
+  ser que se carregue em **Reenviar e-mail**.
+- O link do e-mail usa o `APP_URL` do servidor, nunca um URL vindo do navegador.
+- **Sem Supabase**, cada participante tem um botão **Enviar por e-mail**, que abre a app
+  de e-mail com a mensagem pronta. Quem organiza envia e, por isso, vê o resultado.
 
 **Notas e limitações**
 

@@ -1,4 +1,10 @@
-import type { EventDetails, Participant, ParticipantId } from './types';
+import type {
+  EventDetails,
+  GiftEvent,
+  Participant,
+  ParticipantId,
+  ParticipantInput,
+} from './types';
 
 export const MAX_EVENT_NAME = 80;
 export const MAX_PARTICIPANT_NAME = 50;
@@ -37,6 +43,45 @@ export function validateParticipantName(
   return ok;
 }
 
+export const MAX_EMAIL = 254;
+// Validação pragmática: algo@dominio.tld, sem espaços.
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+
+export const cleanEmail = (email: string) => email.trim().toLowerCase();
+
+export function validateEmail(
+  email: string,
+  existing: readonly Participant[],
+  ignoreId?: ParticipantId,
+): ValidationResult {
+  const clean = cleanEmail(email);
+  if (!clean) return fail('Escreve o e-mail.');
+  if (clean.length > MAX_EMAIL || !EMAIL_RE.test(clean)) return fail('Este e-mail não é válido.');
+  if (existing.some((p) => p.id !== ignoreId && cleanEmail(p.email ?? '') === clean))
+    return fail('Este e-mail já está a ser usado por outro participante.');
+  return ok;
+}
+
+export type ParticipantErrors = Partial<Record<keyof ParticipantInput, string>>;
+
+export function validateParticipant(
+  input: ParticipantInput,
+  existing: readonly Participant[],
+  ignoreId?: ParticipantId,
+): ParticipantErrors {
+  const errors: ParticipantErrors = {};
+  const n = validateParticipantName(input.name, existing, ignoreId);
+  if (!n.ok) errors.name = n.error;
+  const e = validateEmail(input.email, existing, ignoreId);
+  if (!e.ok) errors.email = e.error;
+  return errors;
+}
+
+/** Problemas que impedem o sorteio (além do número mínimo de participantes). */
+export function participantsMissingEmail(event: GiftEvent): Participant[] {
+  return event.participants.filter((p) => !validateEmail(p.email ?? '', []).ok);
+}
+
 export function isValidIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [y, m, d] = value.split('-').map(Number) as [number, number, number];
@@ -57,6 +102,14 @@ export function validateEventDetails(details: EventDetails): EventDetailsErrors 
     errors.budgetCents = 'Indica um orçamento maior que 0 €.';
   else if (details.budgetCents > MAX_BUDGET_CENTS) errors.budgetCents = 'Orçamento demasiado alto.';
 
+  const min = details.minBudgetCents;
+  if (min !== null) {
+    if (!Number.isInteger(min) || min <= 0)
+      errors.minBudgetCents = 'Indica um valor mínimo maior que 0 €, ou deixa em branco.';
+    else if (!errors.budgetCents && min > details.budgetCents)
+      errors.minBudgetCents = 'O valor mínimo não pode ser maior do que o máximo.';
+  }
+
   if (!isValidIsoDate(details.exchangeDate)) errors.exchangeDate = 'Escolhe uma data válida.';
   return errors;
 }
@@ -75,6 +128,13 @@ export function formatEuros(cents: number): string {
     currency: 'EUR',
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
   }).format(cents / 100);
+}
+
+/** "até 25 €" ou "entre 10 € e 25 €" (ou "25 €" se mínimo = máximo). */
+export function formatBudget(maxCents: number, minCents: number | null): string {
+  if (minCents === null || minCents <= 0) return `até ${formatEuros(maxCents)}`;
+  if (minCents === maxCents) return formatEuros(maxCents);
+  return `entre ${formatEuros(minCents)} e ${formatEuros(maxCents)}`;
 }
 
 export function formatDate(iso: string): string {

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { formatDate, formatEuros } from '../../domain';
+import { formatBudget, formatDate } from '../../domain';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -44,7 +44,7 @@ export function EventListPage() {
               <Link to={`/eventos/${e.id}`} className="card-link">
                 <span className="card-title">{e.name}</span>
                 <span className="muted">
-                  {formatDate(e.exchangeDate)} · até {formatEuros(e.budgetCents)} ·{' '}
+                  {formatDate(e.exchangeDate)} · {formatBudget(e.budgetCents, e.minBudgetCents)} ·{' '}
                   {e.participants.length} participante{e.participants.length === 1 ? '' : 's'}
                   {e.draw ? ' · sorteado' : ''}
                 </span>

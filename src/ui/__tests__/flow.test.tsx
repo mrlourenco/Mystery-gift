@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { addParticipant, createEvent, runDraw } from '../../domain';
+import type { Delivery, DrawMailer } from '../../notify';
 import { NoAuthService } from '../../auth';
 import { InMemoryEventRepository, type EventRepository } from '../../data';
 import { encodeReveal, LocalLinkService } from '../../links';
@@ -17,7 +19,12 @@ beforeAll(() => {
 function renderApp(path = '/', repo: EventRepository = new InMemoryEventRepository()) {
   render(
     <ServicesProvider
-      services={{ repository: repo, auth: new NoAuthService(), links: new LocalLinkService(repo) }}
+      services={{
+        repository: repo,
+        auth: new NoAuthService(),
+        links: new LocalLinkService(repo),
+        mailer: null,
+      }}
     >
       <MemoryRouter initialEntries={[path]}>
         <AppRoutes />
@@ -34,7 +41,8 @@ describe('fluxo do organizador', () => {
 
     await user.click(await screen.findByRole('link', { name: 'Novo evento' }));
     await user.type(screen.getByLabelText('Nome do evento'), 'Natal 🎄');
-    await user.type(screen.getByLabelText('Orçamento máximo (€)'), '20');
+    await user.type(screen.getByLabelText('Mínimo (€)'), '10');
+    await user.type(screen.getByLabelText('Máximo (€)'), '20');
     await user.type(screen.getByLabelText('Data da troca'), '2026-12-24');
     await user.click(screen.getByRole('button', { name: 'Criar evento' }));
 
@@ -42,35 +50,58 @@ describe('fluxo do organizador', () => {
     const draw = screen.getByRole('button', { name: 'Fazer sorteio' });
     expect(draw).toBeDisabled();
 
-    const input = screen.getByLabelText('Nome do participante');
-    for (const name of ['Ana', 'Rui', 'Eva']) {
-      await user.type(input, name);
-      await user.click(screen.getByRole('button', { name: 'Adicionar' }));
-      await screen.findByText(name);
-    }
+    expect(screen.getByText(/entre 10\s?€ e 20\s?€/)).toBeInTheDocument();
 
-    // Duplicado (sem distinguir maiúsculas)
-    await user.type(input, 'ANA');
+    const name = screen.getByLabelText('Nome');
+    const email = screen.getByLabelText('E-mail');
+    for (const n of ['Ana', 'Rui', 'Eva']) {
+      await user.type(name, n);
+      await user.type(email, `${n.toLowerCase()}@exemplo.pt`);
+      await user.click(screen.getByRole('button', { name: 'Adicionar' }));
+      await screen.findByText(n);
+    }
+    expect(screen.getByText('ana@exemplo.pt')).toBeInTheDocument();
+
+    // Sem e-mail não adiciona
+    await user.type(name, 'Zé');
     await user.click(screen.getByRole('button', { name: 'Adicionar' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Já existe');
-    await user.clear(input);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Escreve o e-mail');
+
+    // Duplicado (nome sem distinguir maiúsculas; e-mail repetido)
+    await user.clear(name);
+    await user.type(name, 'ANA');
+    await user.type(email, 'RUI@exemplo.pt');
+    await user.click(screen.getByRole('button', { name: 'Adicionar' }));
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.map((a) => a.textContent).join(' ')).toMatch(/Já existe.*já está a ser usado/);
+    await user.clear(name);
+    await user.clear(email);
 
     // Editar
     await user.click(screen.getByRole('button', { name: 'Editar Rui' }));
-    const edit = screen.getByLabelText('Novo nome para Rui');
+    const edit = screen.getByLabelText('Nome de Rui');
     await user.clear(edit);
     await user.type(edit, 'Rúben');
     await user.click(screen.getByRole('button', { name: 'Guardar' }));
     expect(await screen.findByText('Rúben')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Fazer sorteio' }));
-    expect(await screen.findByRole('heading', { name: 'Links pessoais' })).toBeInTheDocument();
-    const cards = within(
-      await screen.findByRole('list', { name: 'Links por participante' }),
-    ).getAllByRole('listitem');
+    expect(await screen.findByRole('heading', { name: 'Enviar o resultado' })).toBeInTheDocument();
+    const cards = within(await screen.findByRole('list', { name: 'Participantes' })).getAllByRole(
+      'listitem',
+    );
     expect(cards).toHaveLength(3);
     expect(await screen.findByRole('button', { name: 'Copiar link de Ana' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Partilhar link com Eva' })).toBeInTheDocument();
+
+    // Sem servidor: "Enviar por e-mail" abre a app de e-mail com a mensagem pronta.
+    const mail = screen.getByRole('link', { name: 'Enviar por e-mail a Ana' });
+    const href = mail.getAttribute('href')!;
+    expect(href).toMatch(/^mailto:ana@exemplo\.pt\?subject=/);
+    const body = decodeURIComponent(href.split('body=')[1]!);
+    expect(body).toContain('Olá Ana');
+    expect(body).toMatch(/entre 10\s?€ e 20\s?€/);
+    expect(body).toMatch(/#\/r\//);
 
     const [saved] = await repo.list();
     const firstDrawId = saved!.draw!.id;
@@ -92,6 +123,7 @@ describe('fluxo do organizador', () => {
         id: 'e1',
         name: 'Escritório',
         budgetCents: 1500,
+        minBudgetCents: null,
         exchangeDate: '2026-12-19',
         participants: [],
         exclusions: [],
@@ -108,6 +140,61 @@ describe('fluxo do organizador', () => {
   });
 });
 
+describe('envio por e-mail com servidor', () => {
+  it('envia a todos, mostra o estado e permite reenviar a um', async () => {
+    const user = userEvent.setup();
+    let e = createEvent({
+      name: 'Natal',
+      budgetCents: 2000,
+      minBudgetCents: null,
+      exchangeDate: '2026-12-24',
+    });
+    for (const n of ['Ana', 'Rui', 'Eva'])
+      e = addParticipant(e, { name: n, email: `${n.toLowerCase()}@x.pt` });
+    e = runDraw(e);
+    const repo = new InMemoryEventRepository([e]);
+    const sent = new Map<string, Delivery>();
+    const mailer: DrawMailer = {
+      deliveries: async () => new Map(sent),
+      send: vi.fn<DrawMailer['send']>(async (ev, opts) => {
+        const ids = opts?.giverIds ?? ev.participants.map((p) => p.id);
+        for (const giverId of ids)
+          sent.set(giverId, { giverId, status: 'sent', error: null, updatedAt: 'x' });
+        return ids.map((giverId) => ({ giverId, status: 'sent' as const }));
+      }),
+    };
+    render(
+      <ServicesProvider
+        services={{
+          repository: repo,
+          auth: new NoAuthService(),
+          links: new LocalLinkService(repo),
+          mailer,
+        }}
+      >
+        <MemoryRouter initialEntries={[`/eventos/${e.id}/resultado`]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </ServicesProvider>,
+    );
+
+    expect(await screen.findAllByText('Por enviar')).toHaveLength(3);
+    expect(screen.queryByRole('link', { name: /Enviar por e-mail/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Enviar e-mails a todos (3)' }));
+    expect(await screen.findByText('Todos os e-mails foram enviados')).toBeInTheDocument();
+    expect(screen.getAllByText('E-mail enviado')).toHaveLength(3);
+    expect(mailer.send).toHaveBeenCalledWith(expect.objectContaining({ id: e.id }), {});
+
+    await user.click(screen.getByRole('button', { name: 'Reenviar e-mail a Rui' }));
+    await waitFor(() =>
+      expect(mailer.send).toHaveBeenLastCalledWith(expect.anything(), {
+        giverIds: [e.participants[1]!.id],
+        resend: true,
+      }),
+    );
+  });
+});
+
 describe('concorrência', () => {
   it('não perde participantes adicionados mais depressa do que a gravação', async () => {
     class SlowRepo extends InMemoryEventRepository {
@@ -121,6 +208,7 @@ describe('concorrência', () => {
         id: 'e1',
         name: 'Natal',
         budgetCents: 1500,
+        minBudgetCents: null,
         exchangeDate: '2026-12-19',
         participants: [],
         exclusions: [],
@@ -131,9 +219,11 @@ describe('concorrência', () => {
       },
     ]);
     renderApp('/eventos/e1', repo);
-    const input = await screen.findByLabelText('Nome do participante');
+    const input = await screen.findByLabelText('Nome');
+    const email = screen.getByLabelText('E-mail');
     for (const name of ['Ana', 'Rui', 'Eva', 'Zé']) {
       fireEvent.change(input, { target: { value: name } });
+      fireEvent.change(email, { target: { value: `${name}@x.pt` } });
       fireEvent.click(screen.getByRole('button', { name: 'Adicionar' }));
     }
     await waitFor(async () =>
@@ -151,6 +241,7 @@ describe('revelação', () => {
   const code = encodeReveal({
     eventName: 'Natal',
     budgetCents: 2000,
+    minBudgetCents: null,
     exchangeDate: '2026-12-24',
     giverName: 'Inês',
     receiverName: 'João 🎅',

@@ -6,6 +6,7 @@ import { formatToken, generateToken, normalizeToken } from './tokens';
 interface RevealRow {
   event_name: string;
   budget_cents: number;
+  min_budget_cents: number | null;
   exchange_date: string;
   giver_name: string | null;
   receiver_name: string | null;
@@ -82,6 +83,7 @@ export class SupabaseLinkService implements LinkService {
       data: {
         eventName: row.event_name,
         budgetCents: row.budget_cents,
+        minBudgetCents: row.min_budget_cents ?? null,
         exchangeDate: row.exchange_date,
         giverName: row.giver_name,
         receiverName: row.receiver_name,

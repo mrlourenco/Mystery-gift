@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { formatDate, formatEuros } from '../../domain';
+import { formatBudget, formatDate } from '../../domain';
 import { useLinkService, type RevealResult } from '../../links';
 import { Envelope } from '../components/Envelope';
 import { Layout } from '../components/Layout';
@@ -87,8 +87,8 @@ export function RevealPage() {
           <p className="reveal-name">{data.receiverName}</p>
           <dl className="reveal-details">
             <div>
-              <dt>Orçamento</dt>
-              <dd>até {formatEuros(data.budgetCents)}</dd>
+              <dt>Valor do presente</dt>
+              <dd>{formatBudget(data.budgetCents, data.minBudgetCents)}</dd>
             </div>
             <div>
               <dt>Data da troca</dt>
