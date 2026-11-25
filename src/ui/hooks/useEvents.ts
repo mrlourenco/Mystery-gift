@@ -3,7 +3,7 @@ import type { EventId, GiftEvent } from '../../domain';
 import { useEventRepository } from '../../data';
 
 type Load<T> =
-  { status: 'loading' } | { status: 'error'; error: Error } | { status: 'ready'; data: T };
+  { status: 'loading' } | { status: 'error'; error: unknown } | { status: 'ready'; data: T };
 
 export function useEventList() {
   const repo = useEventRepository();
@@ -13,7 +13,7 @@ export function useEventList() {
     try {
       setState({ status: 'ready', data: await repo.list() });
     } catch (e) {
-      setState({ status: 'error', error: e as Error });
+      setState({ status: 'error', error: e });
     }
   }, [repo]);
 
@@ -45,7 +45,7 @@ export function useEvent(id: EventId | undefined) {
     setState({ status: 'loading' });
     repo.get(id).then(
       (data) => alive && setState({ status: 'ready', data }),
-      (error: Error) => alive && setState({ status: 'error', error }),
+      (error: unknown) => alive && setState({ status: 'error', error }),
     );
     return () => {
       alive = false;

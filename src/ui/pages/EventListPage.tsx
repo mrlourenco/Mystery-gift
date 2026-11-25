@@ -5,6 +5,7 @@ import { Button } from '../components/Button';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useEventList } from '../hooks/useEvents';
 import { useStatus } from '../components/StatusMessage';
+import { ErrorDetails } from '../components/ErrorDetails';
 
 export function EventListPage() {
   const { state, remove } = useEventList();
@@ -24,9 +25,12 @@ export function EventListPage() {
 
       {state.status === 'loading' && <p aria-busy="true">A carregar…</p>}
       {state.status === 'error' && (
-        <p className="alert alert-error" role="alert">
-          Não foi possível ler os eventos. Verifica a ligação à internet e recarrega a página.
-        </p>
+        <div className="alert alert-error" role="alert">
+          <p className="alert-text">
+            Não foi possível ler os eventos. Verifica a ligação à internet e recarrega a página.
+          </p>
+          <ErrorDetails error={state.error} />
+        </div>
       )}
       {state.status === 'ready' && state.data.length === 0 && (
         <div className="empty">
